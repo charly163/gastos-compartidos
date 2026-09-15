@@ -38,6 +38,8 @@ interface Gasto {
 const App: React.FC = () => {
   const [eventId, setEventId] = useState('');
   const [eventNombre, setEventNombre] = useState('');
+  const [eventoActivo, setEventoActivo] = useState('');
+  const [nombreParaUnirse, setNombreParaUnirse] = useState('');
   const [participantes, setParticipantes] = useState<Participante[]>([]);
   const [gastos, setGastos] = useState<Gasto[]>([]);
   const [nuevoParticipante, setNuevoParticipante] = useState('');
@@ -51,6 +53,7 @@ const App: React.FC = () => {
     try {
       const data = await apiRequest<Evento>('POST', { action: 'crear-evento', nombre: eventNombre.trim() });
       setEventId(data.id);
+      setEventoActivo(data.nombre);
       setEventNombre('');
     } catch (error) {
       console.error('Error al crear evento:', error);
@@ -59,14 +62,15 @@ const App: React.FC = () => {
   };
 
   const handleUnirseEvento = async () => {
-    if (!eventId.trim()) {
-      alert('Por favor, ingresa un ID de evento válido.');
+    if (!nombreParaUnirse.trim()) {
+      alert('Por favor, ingresa el nombre del evento.');
       return;
     }
-    const codigo = eventId.trim();
     try {
-      await apiRequest<{ participantes: Participante[]; gastos: Gasto[] }>('GET', undefined, `?eventId=${encodeURIComponent(codigo)}`);
-      setEventId(codigo);
+      const evento = await apiRequest<Evento>('POST', { action: 'buscar-evento', nombre: nombreParaUnirse.trim() });
+      setEventId(evento.id);
+      setEventoActivo(evento.nombre);
+      setNombreParaUnirse('');
     } catch (error) {
       console.error('Error al unirse al evento:', error);
       alert(error instanceof Error ? error.message : 'No se pudo encontrar el evento.');
@@ -239,13 +243,13 @@ const App: React.FC = () => {
             <span className="step-number">02</span>
             <h2>Unirse a un evento</h2>
             <p>Usa el código que te compartió quien creó la cuenta.</p>
-            <label htmlFor="event-id">Código del evento</label>
+            <label htmlFor="event-id">Nombre del evento</label>
             <input
               id="event-id"
               type="text"
-              value={eventId}
-              onChange={(e) => setEventId(e.target.value)}
-              placeholder="Pega aquí el código"
+              value={nombreParaUnirse}
+              onChange={(e) => setNombreParaUnirse(e.target.value)}
+              placeholder="Ej. Cena de amigos"
               className="app-input"
             />
             <button
@@ -268,13 +272,16 @@ const App: React.FC = () => {
           <h1>Cena Justa</h1>
         </div>
         <button
-          onClick={() => setEventId('')}
+          onClick={() => {
+            setEventId('');
+            setEventoActivo('');
+          }}
           className="exit-button"
         >
           Salir
         </button>
       </header>
-      <div className="event-code"><span>Código del evento</span><strong>{eventId}</strong></div>
+      <div className="event-code"><span>Evento</span><strong>{eventoActivo || eventId}</strong></div>
 
       <section className="workspace-grid">
         <div className="app-panel form-panel">

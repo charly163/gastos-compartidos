@@ -61,8 +61,17 @@ export default async (request: Request) => {
         const body = await request.json() as RequestBody;
 
         if (body.action === 'crear-evento') {
+            const [eventoExistente] = await sql`SELECT id FROM eventos WHERE lower(trim(nombre)) = lower(trim(${body.nombre})) LIMIT 1`;
+            if (eventoExistente) return json({ error: 'Ya existe un evento con ese nombre. Elige otro nombre o únete al evento existente.' }, 409);
             const [evento] = await sql`INSERT INTO eventos (nombre) VALUES (${body.nombre}) RETURNING id, nombre`;
             return json(evento, 201);
+        }
+
+        if (body.action === 'buscar-evento') {
+            const eventos = await sql`SELECT id, nombre FROM eventos WHERE lower(trim(nombre)) = lower(trim(${body.nombre}))`;
+            if (eventos.length === 0) return json({ error: 'No existe un evento con ese nombre.' }, 404);
+            if (eventos.length > 1) return json({ error: 'Hay más de un evento con ese nombre. Usa un nombre más específico.' }, 409);
+            return json(eventos[0]);
         }
 
         if (body.action === 'agregar-participante') {
