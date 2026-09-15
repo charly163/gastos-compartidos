@@ -1,7 +1,5 @@
 import { neon } from '@netlify/neon';
 
-const sql = neon();
-
 type RequestBody = {
     action?: string;
     eventId?: string;
@@ -19,6 +17,12 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 export default async (request: Request) => {
     try {
+        const databaseUrl = process.env.NETLIFY_DATABASE_URL?.trim();
+        if (!databaseUrl) {
+            return json({ error: 'NETLIFY_DATABASE_URL no está disponible para esta función.' }, 500);
+        }
+        const sql = neon(databaseUrl);
+
         if (request.method === 'GET') {
             const eventId = new URL(request.url).searchParams.get('eventId');
             if (!eventId) return json({ error: 'Falta eventId.' }, 400);
