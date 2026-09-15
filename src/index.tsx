@@ -1,13 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createClient } from '@supabase/supabase-js';
 import './index.css';
 
-// Configura el cliente de Supabase
-const supabase = createClient(
-  process.env.REACT_APP_SUPABASE_URL || '',
-  process.env.REACT_APP_SUPABASE_ANON_KEY || ''
-);
+const API_URL = process.env.REACT_APP_API_URL || '/.netlify/functions/api';
+
+const apiRequest = async <T,>(method: 'GET' | 'POST', body?: unknown, query = ''): Promise<T> => {
+  const response = await fetch(`${API_URL}${query}`, {
+    method,
+    headers: method === 'POST' ? { 'Content-Type': 'application/json' } : undefined,
+    body: method === 'POST' ? JSON.stringify(body) : undefined,
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Error de comunicación con el servidor.');
+  return result as T;
+};
 
 interface Evento {
   id: string;
@@ -37,19 +43,18 @@ const App: React.FC = () => {
   const [nuevoParticipante, setNuevoParticipante] = useState('');
   const [nuevoGasto, setNuevoGasto] = useState({ participante_id: '', item: '', monto: '' });
 
-  // Crear o unirse a un evento
   const handleCrearEvento = async () => {
     if (!eventNombre.trim()) {
       alert('Por favor, ingresa un nombre para el evento.');
       return;
     }
-    const { data, error } = await supabase.from('eventos').insert([{ nombre: eventNombre.trim() }]).select().single();
-    if (error) {
-      console.error('Error al crear evento:', error);
-      alert('Error al crear evento.');
-    } else {
+    try {
+      const data = await apiRequest<Evento>('POST', { action: 'crear-evento', nombre: eventNombre.trim() });
       setEventId(data.id);
       setEventNombre('');
+    } catch (error) {
+      console.error('Error al crear evento:', error);
+      alert('Error al crear evento.');
     }
   };
 
@@ -61,62 +66,24 @@ const App: React.FC = () => {
     setEventId(eventId.trim());
   };
 
-  // Cargar datos y suscripciones en tiempo real
   useEffect(() => {
     if (!eventId) return;
 
-    const fetchParticipantes = async () => {
-      const { data, error } = await supabase
-        .from('participantes')
-        .select('*')
-        .eq('event_id', eventId);
-      if (error) {
-        console.error('Error al cargar participantes:', error);
-      } else {
-        setParticipantes(data || []);
+    const cargarDatos = async () => {
+      try {
+        const data = await apiRequest<{ participantes: Participante[]; gastos: Gasto[] }>('GET', undefined, `?eventId=${encodeURIComponent(eventId)}`);
+        setParticipantes(data.participantes || []);
+        setGastos(data.gastos || []);
+      } catch (error) {
+        console.error('Error al cargar datos:', error);
       }
     };
 
-    const fetchGastos = async () => {
-      const { data, error } = await supabase
-        .from('gastos')
-        .select(`
-          *,
-          participantes (
-            id,
-            nombre
-          )
-        `)
-        .eq('event_id', eventId)
-        .order('created_at', { ascending: false });
-      if (error) {
-        console.error('Error al cargar gastos:', error);
-      } else {
-        setGastos(data || []);
-        console.log('Gastos cargados con participantes:', data);
-      }
-    };
-
-    fetchParticipantes();
-    fetchGastos();
-
-    const participanteSubscription = supabase
-      .channel(`participantes-${eventId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'participantes', filter: `event_id=eq.${eventId}` }, () => {
-        fetchParticipantes();
-      })
-      .subscribe();
-
-    const gastoSubscription = supabase
-      .channel(`gastos-${eventId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos', filter: `event_id=eq.${eventId}` }, () => {
-        fetchGastos();
-      })
-      .subscribe();
+    cargarDatos();
+    const intervalo = window.setInterval(cargarDatos, 10000);
 
     return () => {
-      supabase.removeChannel(participanteSubscription);
-      supabase.removeChannel(gastoSubscription);
+      window.clearInterval(intervalo);
     };
   }, [eventId]);
 
@@ -126,22 +93,12 @@ const App: React.FC = () => {
       alert('Por favor, ingresa un nombre válido y no repetido.');
       return;
     }
-    const { error } = await supabase.from('participantes').insert([{ event_id: eventId, nombre: nuevoParticipante.trim() }]);
-    if (error) {
+    try {
+      await apiRequest<Participante>('POST', { action: 'agregar-participante', eventId, nombre: nuevoParticipante.trim() });
+      setNuevoParticipante('');
+    } catch (error) {
       console.error('Error al agregar participante:', error);
       alert('Error al agregar participante.');
-    } else {
-      setNuevoParticipante('');
-      const { data, error: fetchError } = await supabase
-        .from('participantes')
-        .select('*')
-        .eq('event_id', eventId);
-      if (fetchError) {
-        console.error('Error al recargar participantes:', fetchError);
-      } else {
-        setParticipantes(data || []);
-        console.log('Participantes recargados:', data);
-      }
     }
   };
 
@@ -151,8 +108,9 @@ const App: React.FC = () => {
       alert('No puedes eliminar a una persona con gastos registrados.');
       return;
     }
-    const { error } = await supabase.from('participantes').delete().eq('id', id);
-    if (error) {
+    try {
+      await apiRequest('POST', { action: 'eliminar-participante', id });
+    } catch (error) {
       console.error('Error al eliminar participante:', error);
       alert('Error al eliminar participante.');
     }
@@ -164,68 +122,28 @@ const App: React.FC = () => {
       alert('Por favor, selecciona un nombre, ingresa un producto válido y un monto mayor a 0.');
       return;
     }
-    const { error } = await supabase.from('gastos').insert([{
-      event_id: eventId,
-      participante_id: nuevoGasto.participante_id,
-      item: nuevoGasto.item.trim(),
-      monto: parseFloat(nuevoGasto.monto),
-    }]);
-    if (error) {
+    try {
+      await apiRequest<Gasto>('POST', {
+        action: 'agregar-gasto',
+        eventId,
+        participanteId: nuevoGasto.participante_id,
+        item: nuevoGasto.item.trim(),
+        monto: parseFloat(nuevoGasto.monto),
+      });
+      setNuevoGasto({ participante_id: '', item: '', monto: '' });
+    } catch (error) {
       console.error('Error al agregar gasto:', error);
       alert('Error al agregar gasto.');
-    } else {
-      setNuevoGasto({ participante_id: '', item: '', monto: '' });
-      const { data, error: fetchError } = await supabase
-        .from('gastos')
-        .select(`
-          *,
-          participantes (
-            id,
-            nombre
-          )
-        `)
-        .eq('event_id', eventId)
-        .order('created_at', { ascending: false });
-      if (fetchError) {
-        console.error('Error al recargar gastos:', fetchError);
-      } else {
-        setGastos(data || []);
-        console.log('Gastos recargados con participantes:', data);
-      }
     }
   };
 
   // Eliminar gasto
   const eliminarGasto = async (id: string) => {
-    console.log('Intentando eliminar gasto con id:', id);
     try {
-      const { data, error } = await supabase.from('gastos').delete().eq('id', id);
-      if (error) {
-        console.error('Error al eliminar gasto:', error.message || error);
-        alert('Error al eliminar gasto: ' + (error.message || 'Intenta de nuevo'));
-      } else {
-        console.log('Gasto eliminado con éxito, datos devueltos:', data);
-        const { data: refreshedData, error: fetchError } = await supabase
-          .from('gastos')
-          .select(`
-            *,
-            participantes (
-              id,
-              nombre
-            )
-          `)
-          .eq('event_id', eventId)
-          .order('created_at', { ascending: false });
-        if (fetchError) {
-          console.error('Error al recargar gastos después de eliminar:', fetchError);
-        } else {
-          setGastos(refreshedData || []);
-          console.log('Gastos recargados después de eliminar:', refreshedData);
-        }
-      }
+      await apiRequest('POST', { action: 'eliminar-gasto', id });
     } catch (err) {
       console.error('Error inesperado al eliminar gasto:', err);
-      alert('Error inesperado al eliminar gasto. Revisa la consola.');
+      alert('Error inesperado al eliminar gasto.');
     }
   };
 
