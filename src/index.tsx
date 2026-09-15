@@ -58,12 +58,19 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUnirseEvento = () => {
+  const handleUnirseEvento = async () => {
     if (!eventId.trim()) {
       alert('Por favor, ingresa un ID de evento válido.');
       return;
     }
-    setEventId(eventId.trim());
+    const codigo = eventId.trim();
+    try {
+      await apiRequest<{ participantes: Participante[]; gastos: Gasto[] }>('GET', undefined, `?eventId=${encodeURIComponent(codigo)}`);
+      setEventId(codigo);
+    } catch (error) {
+      console.error('Error al unirse al evento:', error);
+      alert(error instanceof Error ? error.message : 'No se pudo encontrar el evento.');
+    }
   };
 
   useEffect(() => {

@@ -30,6 +30,12 @@ export default async (request: Request) => {
         if (request.method === 'GET') {
             const eventId = new URL(request.url).searchParams.get('eventId');
             if (!eventId) return json({ error: 'Falta eventId.' }, 400);
+            if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(eventId)) {
+                return json({ error: 'El código del evento no es válido.' }, 400);
+            }
+
+            const [evento] = await sql`SELECT id, nombre FROM eventos WHERE id = ${eventId}`;
+            if (!evento) return json({ error: 'No existe un evento con ese código.' }, 404);
 
             const [participantes, gastos] = await Promise.all([
                 sql`SELECT id, event_id, nombre FROM participantes WHERE event_id = ${eventId} ORDER BY nombre`,
