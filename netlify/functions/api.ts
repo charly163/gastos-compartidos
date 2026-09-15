@@ -17,9 +17,13 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 export default async (request: Request) => {
     try {
-        const databaseUrl = process.env.NETLIFY_DATABASE_URL?.trim();
+        const databaseUrl = (
+            process.env.NETLIFY_DATABASE_URL
+            || process.env.DATABASE_URL
+            || process.env.NEON_DATABASE_URL
+        )?.trim();
         if (!databaseUrl) {
-            return json({ error: 'NETLIFY_DATABASE_URL no está disponible para esta función.' }, 500);
+            return json({ error: 'No hay una variable de conexión disponible para esta función.' }, 500);
         }
         const sql = neon(databaseUrl);
 
