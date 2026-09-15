@@ -94,7 +94,8 @@ const App: React.FC = () => {
       return;
     }
     try {
-      await apiRequest<Participante>('POST', { action: 'agregar-participante', eventId, nombre: nuevoParticipante.trim() });
+      const participante = await apiRequest<Participante>('POST', { action: 'agregar-participante', eventId, nombre: nuevoParticipante.trim() });
+      setParticipantes((actuales) => [...actuales, participante].sort((a, b) => a.nombre.localeCompare(b.nombre)));
       setNuevoParticipante('');
     } catch (error) {
       console.error('Error al agregar participante:', error);
@@ -109,8 +110,13 @@ const App: React.FC = () => {
       return;
     }
     try {
+      setParticipantes((actuales) => actuales.filter((participante) => participante.id !== id));
       await apiRequest('POST', { action: 'eliminar-participante', id });
     } catch (error) {
+      const participanteEliminado = participantes.find((participante) => participante.id === id);
+      if (participanteEliminado) {
+        setParticipantes((actuales) => [...actuales, participanteEliminado].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+      }
       console.error('Error al eliminar participante:', error);
       alert('Error al eliminar participante.');
     }
@@ -123,13 +129,14 @@ const App: React.FC = () => {
       return;
     }
     try {
-      await apiRequest<Gasto>('POST', {
+      const gasto = await apiRequest<Gasto>('POST', {
         action: 'agregar-gasto',
         eventId,
         participanteId: nuevoGasto.participante_id,
         item: nuevoGasto.item.trim(),
         monto: parseFloat(nuevoGasto.monto),
       });
+      setGastos((actuales) => [{ ...gasto, monto: Number(gasto.monto) }, ...actuales]);
       setNuevoGasto({ participante_id: '', item: '', monto: '' });
     } catch (error) {
       console.error('Error al agregar gasto:', error);
@@ -140,8 +147,13 @@ const App: React.FC = () => {
   // Eliminar gasto
   const eliminarGasto = async (id: string) => {
     try {
+      setGastos((actuales) => actuales.filter((gasto) => gasto.id !== id));
       await apiRequest('POST', { action: 'eliminar-gasto', id });
     } catch (err) {
+      const gastoEliminado = gastos.find((gasto) => gasto.id === id);
+      if (gastoEliminado) {
+        setGastos((actuales) => [gastoEliminado, ...actuales]);
+      }
       console.error('Error inesperado al eliminar gasto:', err);
       alert('Error inesperado al eliminar gasto.');
     }
